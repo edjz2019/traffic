@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+
+import matplotlib.animation as animation  
+import matplotlib.pyplot as plt  
+import networkx as nx
+import numpy as np  
+
+
+def rand_start_xv(len,p,q): # q is prob(v=1). 1-q = prob(v=2).
+    vec=np.zeros((2,len))
+    for j in range(1,len): #zero is empty
+        probx=np.random.uniform(0,1)
+        if probx<p: 
+            vec[0,j]=j
+            probv=np.random.uniform(0,1)
+            if probv<q:
+                vec[1,j]=1
+            else:
+                vec[1,j]=2
+    return vec
+
+
+
+def polar_transf(x): #returns the angles of polar transfn of x
+    tick_size = 2*np.pi / len(x[0])
+    theta=[]
+    for j in range(len(x[0])):
+        if x[0,j]!=0:
+            theta.append(x[0,j]*tick_size) 
+    return theta
+
+
+
+def see_3(x): #creates a digraph of interactions; view length 3
+    x=np.append(x,0)
+    x=np.append(x,0)
+    x=np.append(x,0)
+    print(x)
+    G=nx.DiGraph()
+    pos={}
+    for j in range(len(x)-3):
+        if x[j]!=0:
+            G.add_node(j) #define nodes as cars
+            pos.update({j:(j,0)}) #node position is car position
+            if x[j+1]!=0:
+                G.add_edge(j,j+1,weight=2) #weight corresponds to distance of interacting vehicles 
+            if x[j+2]!=0:
+                G.add_edge(j,j+2, weight=1)
+            if x[j+3]!=0:
+                G.add_edge(j,j+3, weight=.5)
+            if G.in_degree(j)>2:
+                pos[j]=(j,.1)
+            if G.in_degree(j)==2:
+                pos[j]=(j,.05)
+    
+    weights=[G[u][v]['weight'] for u,v in G.edges()]
+    options = {
+    'node_color': 'green',
+    'node_size': 100,
+    'width': weights,
+    'arrowstyle': '-|>',
+    'arrowsize': 12,
+    }
+    nx.draw_networkx(G, pos,**options)
+    
+    print(G.nodes())
+    print('pos',pos)
+                
+#see_3(x)
+#plt.show()      
+
+test=np.array([[0,1,2,0,0,5,6,7,0,9],[0,1,1,0,0,2,1,2,0,2,]])
+#print(interact(test,5,3))
+
+x=rand_start_xv(40,.3,.3)
+print(x)
+
+"""
+for car j, make list of neighbors (ep is sensory range)
+dictionary holds each neighbor's position and speed
+car j speeds up or slows down probabilistically due to nbr's speed.
+the probability is a function of density and a fixed road cond
+"""     
+def interact(x,j,ep): #function of j ... do i need to define x global? 
+    nbhd_states={}
+    
+    for k in range(1,ep+1): #make list of neighbors: position, velocity 
+        #print('checking for neighbor at ', j+k)
+        if x[0,j+k]!=0:
+            nbhd_states.update({j+k: x[1,j+k]})
+    #print('neighbors of ', j, ":", nbhd_states)
+    
+    roadcond = 1
+    dens = len(nbhd_states)/ep 
+    beta = roadcond*(1-dens)
+    prob=np.random.uniform(0,1)
+    effect=0
+    for pos in nbhd_states:
+        if nbhd_states[pos]>x[1,j]: # interact with faster vehicle
+            #print(prob,1-beta, "prob of speed up")
+            if prob < 1-beta:
+                #print("car ", x[0,j], "speeds up 1")
+                effect += 1
+                x[1,j] += 1
+        if nbhd_states[pos] < x[1,j]: # interact with slower vehicle
+            #print(prob, 1-beta, 'prob of slow down')
+            if prob < 1-beta:
+                effect += nbhd_states[pos]- x[1,j]
+                #print("car ", x[0,j], " changes by ", nbhd_states[pos]-x[1,j])
+                x[1,j] += nbhd_states[pos]- x[1,j]
+    #print("effect on ", j, ":", effect) 
+              
+              
+"""
+check if each position is occupied by a car, starting downstream
+for car j:
+move according to car's velocity; if the desired spot is taken, move
+right behind the vehicle in that spot, and copy their speed
+"""
+def move(x):
+    for j in range(len(x[0])-1,-1,-1): #everyone moves right according to speed
+        v=x[1,j]
+        if x[1,j]!=0 and x[1,int(np.mod(j+v,len(x[0])))]==0: #regular move with speed v
+            newpos = int(np.mod(j+v,len(x[0])))
+            #print(j, 'moves to', newpos)
+            x[0,newpos]=newpos
+            x[1,newpos]=v
+            x[0,j]=0
+            x[1,j]=0
+
+        elif x[1,j]!=0 and x[1,int(np.mod(j+v,len(x[0]))-1)]==0:#if can't move with full vel, move up where possible
+            newpos=int(np.mod(j+v,len(x[0]))-1)
+            #print(j, 'slows, moves to', newpos)
+            v=x[1,newpos+1] #copy that vehicle's speed
+            x[0,newpos]=newpos
+            x[1,newpos]=v
+            x[0,j]=0
+            x[1,j]=0
+    return x            
+            
+            
+"""
+note: occupation of posn is checked via speed being nonzero
+if include v=0 case, need to change this  
+""" 
+def polar_int_dyn(i):
+    global x
+    
+    move(x)
+    for j in range(len(x[0])-1,-1,-1): #interacting speed change
+        if x[1,j]!=0: #if car 
+            interact(x,j,2) #interact to change velocity  
+            
+    #print(x)
+    line.set_data(polar_transf(x),.01)
+    return line,
+
+
+
+fig = plt.figure()  
+#axis = plt.axes(xlim =(0, 10), ylim =(-5,5)) #rect coord
+ax = plt.subplot(111, polar=True)
+line, = ax.plot([], [], 'bo')  
+
+
+def init():
+    line.set_data([], [])
+    return line,
+
+anim_cars = animation.FuncAnimation(fig, polar_int_dyn, init_func=init,
+                            frames = 500, 
+                            interval = 200,  
+                            blit = True, 
+                            repeat=False)
+plt.show()
